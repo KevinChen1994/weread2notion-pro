@@ -1,14 +1,14 @@
 import pendulum
-from weread2notionpro.notion_helper import NotionHelper
-from weread2notionpro.weread_api import WeReadApi
+
 from weread2notionpro import utils
 from weread2notionpro.config import book_properties_type_dict, tz
+from weread2notionpro.notion_helper import NotionHelper
+from weread2notionpro.weread_api import WeReadApi
 
 TAG_ICON_URL = "https://www.notion.so/icons/tag_gray.svg"
 USER_ICON_URL = "https://www.notion.so/icons/user-circle-filled_gray.svg"
 BOOK_ICON_URL = "https://www.notion.so/icons/book_gray.svg"
 rating = {"poor": "⭐️", "fair": "⭐️⭐️⭐️", "good": "⭐️⭐️⭐️⭐️⭐️"}
-
 
 
 def insert_book_to_notion(books, index, bookId):
@@ -18,9 +18,13 @@ def insert_book_to_notion(books, index, bookId):
         book["书架分类"] = archive_dict.get(bookId)
     if bookId in notion_books:
         book.update(notion_books.get(bookId))
-    bookInfo = weread_api.get_bookinfo(bookId)
-    if bookInfo != None:
-        book.update(bookInfo)
+    try:
+        bookInfo = weread_api.get_bookinfo(bookId)
+        if bookInfo != None:
+            book.update(bookInfo)
+    except Exception as e:
+        print(f"获取书籍信息失败 bookId={bookId}: {e}")
+        # 继续处理，不中断整个流程
     readInfo = weread_api.get_read_info(bookId)
     # 研究了下这个状态不知道什么情况有的虽然读了状态还是1 markedStatus = 1 想读 4 读完 其他为在读
     readInfo.update(readInfo.get("readDetail", {}))
@@ -50,7 +54,15 @@ def insert_book_to_notion(books, index, bookId):
     )
     book["开始阅读时间"] = book.get("beginReadingDate")
     book["最后阅读时间"] = book.get("lastReadingDate")
-    cover = book.get("cover").replace("/s_", "/t7_")
+    cover = book.get("cover")
+    # 如果cover是字符串，进行替换；如果是字典，提取URL
+    if isinstance(cover, str):
+        cover = cover.replace("/s_", "/t7_")
+    elif isinstance(cover, dict):
+        cover = cover.get("url", "") or cover.get("external", {}).get("url", "")
+    else:
+        cover = str(cover) if cover else ""
+
     if not cover or not cover.strip() or not cover.startswith("http"):
         cover = BOOK_ICON_URL
     if bookId not in notion_books:
@@ -79,9 +91,7 @@ def insert_book_to_notion(books, index, bookId):
             pendulum.from_timestamp(book.get("时间"), tz="Asia/Shanghai"),
         )
 
-    print(
-        f"正在插入《{book.get('title')}》,一共{len(books)}本，当前是第{index+1}本。"
-    )
+    print(f"正在插入《{book.get('title')}》,一共{len(books)}本，当前是第{index+1}本。")
     parent = {"database_id": notion_helper.book_database_id, "type": "database_id"}
     result = None
     if bookId in notion_books:
@@ -160,12 +170,24 @@ def main():
     global archive_dict
     bookshelf_books = weread_api.get_bookshelf()
     notion_books = notion_helper.get_all_book()
+
+    # 处理bookProgress - 如果不存在则创建空字典
     bookProgress = bookshelf_books.get("bookProgress")
-    bookProgress = {book.get("bookId"): book for book in bookProgress}
-    for archive in bookshelf_books.get("archive"):
-        name = archive.get("name")
-        bookIds = archive.get("bookIds")
-        archive_dict.update({bookId: name for bookId in bookIds})
+    if bookProgress is None:
+        print("警告: 未找到bookProgress数据，使用空数据继续")
+        bookProgress = {}
+    else:
+        bookProgress = {book.get("bookId"): book for book in bookProgress}
+
+    # 处理archive - 如果不存在则跳过
+    archives = bookshelf_books.get("archive")
+    if archives is None:
+        print("警告: 未找到archive数据，跳过书架分类")
+    else:
+        for archive in archives:
+            name = archive.get("name")
+            bookIds = archive.get("bookIds")
+            archive_dict.update({bookId: name for bookId in bookIds})
     not_need_sync = []
     for key, value in notion_books.items():
         if (

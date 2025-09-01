@@ -1,6 +1,4 @@
 from weread2notionpro.notion_helper import NotionHelper
-from weread2notionpro.weread_api import WeReadApi
-
 from weread2notionpro.utils import (
     get_block,
     get_heading,
@@ -10,6 +8,7 @@ from weread2notionpro.utils import (
     get_rich_text_from_result,
     get_table_of_contents,
 )
+from weread2notionpro.weread_api import WeReadApi
 
 
 def get_bookmark_list(page_id, bookId):
@@ -40,7 +39,7 @@ def get_bookmark_list(page_id, bookId):
     return bookmarks
 
 
-def get_review_list(page_id,bookId):
+def get_review_list(page_id, bookId):
     """获取笔记"""
     filter = {
         "and": [
@@ -95,7 +94,6 @@ def get_sort():
     if len(response.get("results")) == 1:
         return response.get("results")[0].get("properties").get("Sort").get("number")
     return 0
-
 
 
 def sort_notes(page_id, chapter, bookmark_list):
@@ -164,7 +162,7 @@ def append_blocks(id, contents):
             l.extend(results)
             blocks.clear()
             sub_contents.clear()
-            if not notion_helper.sync_bookmark and content.get("type")==0:
+            if not notion_helper.sync_bookmark and content.get("type") == 0:
                 continue
             blocks.append(content_to_block(content))
             sub_contents.append(content)
@@ -177,11 +175,11 @@ def append_blocks(id, contents):
                 sub_contents.clear()
             before_block_id = content["blockId"]
         else:
-            if not notion_helper.sync_bookmark and content.get("type")==0:
+            if not notion_helper.sync_bookmark and content.get("type") == 0:
                 continue
             blocks.append(content_to_block(content))
             sub_contents.append(content)
-    
+
     if len(blocks) > 0:
         l.extend(append_blocks_to_notion(id, blocks, before_block_id, sub_contents))
     for index, value in enumerate(l):
@@ -197,7 +195,7 @@ def append_blocks(id, contents):
 def content_to_block(content):
     if "bookmarkId" in content:
         return get_block(
-            content.get("markText",""),
+            content.get("markText", ""),
             notion_helper.block_type,
             notion_helper.show_color,
             content.get("style"),
@@ -206,7 +204,7 @@ def content_to_block(content):
         )
     elif "reviewId" in content:
         return get_block(
-            content.get("content",""),
+            content.get("content", ""),
             notion_helper.block_type,
             notion_helper.show_color,
             content.get("style"),
@@ -233,8 +231,11 @@ def append_blocks_to_notion(id, blocks, after, contents):
         l.append(content)
     return l
 
+
 weread_api = WeReadApi()
 notion_helper = NotionHelper()
+
+
 def main():
     notion_books = notion_helper.get_all_book()
     books = weread_api.get_notebooklist()
@@ -251,15 +252,20 @@ def main():
             print(f"正在同步《{title}》,一共{len(books)}本，当前是第{index+1}本。")
             chapter = weread_api.get_chapter_info(bookId)
             bookmark_list = get_bookmark_list(pageId, bookId)
-            reviews = get_review_list(pageId,bookId)
+            reviews = get_review_list(pageId, bookId)
             bookmark_list.extend(reviews)
             content = sort_notes(pageId, chapter, bookmark_list)
             append_blocks(pageId, content)
-            properties = {
-                "Sort":get_number(sort)
-            }
-            notion_helper.update_book_page(page_id=pageId,properties=properties)
+            properties = {"Sort": get_number(sort)}
+            notion_helper.update_book_page(page_id=pageId, properties=properties)
+
 
 if __name__ == "__main__":
-    main()
+    import sys
 
+    if len(sys.argv) > 1 and sys.argv[1] == "--help":
+        print("微信读书划线和笔记同步工具")
+        print("用法: python -m weread2notionpro.weread")
+        print("功能: 同步微信读书的划线和笔记到Notion")
+        sys.exit(0)
+    main()

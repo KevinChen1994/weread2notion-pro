@@ -41,10 +41,36 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+      - name: Check environment
+        run: |
+          echo "🔍 检查环境配置..."
+          echo "Python版本: $(python --version)"
+          echo "工作目录: $(pwd)"
+          echo "文件列表:"
+          ls -la weread2notionpro/
+          echo "环境变量检查:"
+          echo "NOTION_TOKEN长度: ${#NOTION_TOKEN}"
+          echo "WEREAD_COOKIE长度: ${#WEREAD_COOKIE}"
       - name: weread book sync
         run: |
-          book
+          echo "🚀 开始书籍同步..."
+          python -m weread2notionpro.book 2>&1 | tee book_sync.log
+          if [ $? -eq 0 ]; then
+            echo "✅ 书籍同步完成"
+          else
+            echo "❌ 书籍同步失败"
+            cat book_sync.log
+            exit 1
+          fi
       - name: weread sync
         run: |
-          weread
+          echo "🚀 开始划线和笔记同步..."
+          python -m weread2notionpro.weread 2>&1 | tee weread_sync.log
+          if [ $? -eq 0 ]; then
+            echo "✅ 划线和笔记同步完成"
+          else
+            echo "❌ 划线和笔记同步失败"
+            cat weread_sync.log
+            exit 1
+          fi
       

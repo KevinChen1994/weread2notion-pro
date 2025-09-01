@@ -213,4 +213,11 @@ def main():
 
 
 if __name__ == "__main__":
+    import sys
+
+    if len(sys.argv) > 1 and sys.argv[1] == "--help":
+        print("微信读书书籍同步工具")
+        print("用法: python -m weread2notionpro.book")
+        print("功能: 同步微信读书的书籍信息到Notion")
+        sys.exit(0)
     main()

@@ -1,10 +1,8 @@
-from datetime import datetime
-from datetime import timedelta
 import os
+from datetime import datetime, timedelta
 
 import pendulum
 
-from weread2notionpro.weread_api import WeReadApi
 from weread2notionpro.notion_helper import NotionHelper
 from weread2notionpro.utils import (
     format_date,
@@ -14,6 +12,7 @@ from weread2notionpro.utils import (
     get_relation,
     get_title,
 )
+from weread2notionpro.weread_api import WeReadApi
 
 
 def insert_to_notion(page_id, timestamp, duration):
@@ -76,15 +75,22 @@ def get_file():
         print("OUT_FOLDER does not exist.")
         return None
 
+
 HEATMAP_GUIDE = "https://mp.weixin.qq.com/s?__biz=MzI1OTcxOTI4NA==&mid=2247484145&idx=1&sn=81752852420b9153fc292b7873217651&chksm=ea75ebeadd0262fc65df100370d3f983ba2e52e2fcde2deb1ed49343fbb10645a77570656728&token=157143379&lang=zh_CN#rd"
 
 
 notion_helper = NotionHelper()
 weread_api = WeReadApi()
+
+
 def main():
     image_file = get_file()
     if image_file:
-        image_url = f"https://raw.githubusercontent.com/{os.getenv('REPOSITORY')}/{os.getenv('REF').split('/')[-1]}/OUT_FOLDER/{image_file}"
+        # 获取环境变量，提供默认值
+        repository = os.getenv("REPOSITORY", "local/weread2notion-pro")
+        ref = os.getenv("REF", "refs/heads/main")
+        branch = ref.split("/")[-1] if ref else "main"
+        image_url = f"https://raw.githubusercontent.com/{repository}/{branch}/OUT_FOLDER/{image_file}"
         heatmap_url = f"https://heatmap.malinkang.com/?image={image_url}"
         if notion_helper.heatmap_block_id:
             response = notion_helper.update_heatmap(
@@ -112,5 +118,14 @@ def main():
                 insert_to_notion(page_id=id, timestamp=timestamp, duration=value)
     for key, value in readTimes.items():
         insert_to_notion(None, int(key), value)
+
+
 if __name__ == "__main__":
+    import sys
+
+    if len(sys.argv) > 1 and sys.argv[1] == "--help":
+        print("微信读书阅读时间同步工具")
+        print("用法: python -m weread2notionpro.read_time")
+        print("功能: 同步阅读时间数据并更新热力图")
+        sys.exit(0)
     main()

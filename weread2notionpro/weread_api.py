@@ -258,6 +258,8 @@ class WeReadApi:
             print(
                 "::error::微信读书Cookie过期了，请参考文档重新设置。https://mp.weixin.qq.com/s/B_mqLUZv7M1rmXRsMlBf7A"
             )
+        elif errcode == -2013:
+            print("::error::鉴权失败，请更新 WEREAD_COOKIE")
 
     def parse_json_response(self, response, context):
         try:

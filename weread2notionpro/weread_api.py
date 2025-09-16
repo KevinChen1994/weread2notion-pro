@@ -178,6 +178,34 @@ class WeReadApi:
             "upgrade-insecure-requests": "1",
         }
 
+    def get_api_headers(self, book_id=None, referer=None):
+        """获取模拟XHR请求头，确保返回JSON数据"""
+
+        if referer:
+            referer_url = referer
+        elif book_id:
+            referer_url = self.get_url(book_id)
+        else:
+            referer_url = WEREAD_URL
+
+        return {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36",
+            "Connection": "keep-alive",
+            "Accept": "application/json, text/plain, */*",
+            "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+            "cache-control": "no-cache",
+            "pragma": "no-cache",
+            "Origin": "https://weread.qq.com",
+            "Referer": referer_url,
+            "sec-ch-ua": '"Google Chrome";v="135", "Not-A.Brand";v="8", "Chromium";v="135"',
+            "sec-ch-ua-mobile": "?0",
+            "sec-ch-ua-platform": '"Windows"',
+            "Sec-Fetch-Mode": "cors",
+            "Sec-Fetch-Dest": "empty",
+            "Sec-Fetch-Site": "same-origin",
+            "X-Requested-With": "XMLHttpRequest",
+        }
+
     def visit_homepage(self):
         """访问主页以初始化会话"""
         try:
@@ -190,28 +218,38 @@ class WeReadApi:
     def get_bookshelf(self):
         """获取书架信息（存在笔记的书籍）"""
         self.visit_homepage()
-        headers = self.get_standard_headers()
-        headers["Accept"] = "application/json, text/plain, */*"
+        headers = self.get_api_headers()
 
         r = self.session.get(WEREAD_NOTEBOOKS_URL, headers=headers)
         if r.ok:
-            return r.json()
+            return self.parse_json_response(r, "获取书架信息")
         else:
-            errcode = r.json().get("errcode", 0)
+            try:
+                data = r.json()
+            except ValueError:
+                raise Exception(
+                    f"获取书架信息失败，状态码: {r.status_code}, 响应: {r.text[:200]}"
+                )
+            errcode = data.get("errcode", 0)
             self.handle_errcode(errcode)
             raise Exception(f"Could not get bookshelf {r.text}")
 
     def get_entire_shelf(self):
         """获取所有书架书籍信息"""
         self.visit_homepage()
-        headers = self.get_standard_headers()
-        headers["Accept"] = "application/json, text/plain, */*"
+        headers = self.get_api_headers()
 
         r = self.session.get(WEREAD_SHELF_SYNC_URL, headers=headers)
         if r.ok:
-            return r.json()
+            return self.parse_json_response(r, "获取全部书架信息")
         else:
-            errcode = r.json().get("errcode", 0)
+            try:
+                data = r.json()
+            except ValueError:
+                raise Exception(
+                    f"获取全部书架信息失败，状态码: {r.status_code}, 响应: {r.text[:200]}"
+                )
+            errcode = data.get("errcode", 0)
             self.handle_errcode(errcode)
             raise Exception(f"Could not get entire shelf {r.text}")
 
@@ -221,21 +259,36 @@ class WeReadApi:
                 "::error::微信读书Cookie过期了，请参考文档重新设置。https://mp.weixin.qq.com/s/B_mqLUZv7M1rmXRsMlBf7A"
             )
 
+    def parse_json_response(self, response, context):
+        try:
+            return response.json()
+        except ValueError:
+            snippet = response.text[:200] if response.text else ""
+            snippet = snippet.replace("\n", " ")
+            raise Exception(
+                f"{context}返回的不是JSON，状态码: {response.status_code}, 响应: {snippet}"
+            )
+
     @retry(stop_max_attempt_number=3, wait_fixed=5000)
     def get_notebooklist(self):
         """获取笔记本列表"""
         self.visit_homepage()
-        headers = self.get_standard_headers()
-        headers["Accept"] = "application/json, text/plain, */*"
+        headers = self.get_api_headers()
 
         r = self.session.get(WEREAD_NOTEBOOKS_URL, headers=headers)
         if r.ok:
-            data = r.json()
+            data = self.parse_json_response(r, "获取笔记本列表")
             books = data.get("books", [])
             books.sort(key=lambda x: x.get("sort", 0))
             return books
         else:
-            errcode = r.json().get("errcode", 0)
+            try:
+                data = r.json()
+            except ValueError:
+                raise Exception(
+                    f"获取笔记本列表失败，状态码: {r.status_code}, 响应: {r.text[:200]}"
+                )
+            errcode = data.get("errcode", 0)
             self.handle_errcode(errcode)
             raise Exception(f"Could not get notebook list {r.text}")
 
@@ -243,15 +296,19 @@ class WeReadApi:
     def get_bookinfo(self, bookId):
         """获取书的详情"""
         self.visit_homepage()
-        headers = self.get_standard_headers()
-        headers["Accept"] = "application/json, text/plain, */*"
-
+        headers = self.get_api_headers(bookId)
         params = dict(bookId=bookId)
         r = self.session.get(WEREAD_BOOK_INFO, params=params, headers=headers)
         if r.ok:
-            return r.json()
+            return self.parse_json_response(r, "获取书籍信息")
         else:
-            errcode = r.json().get("errcode", 0)
+            try:
+                data = r.json()
+            except ValueError:
+                raise Exception(
+                    f"获取书籍信息失败，状态码: {r.status_code}, 响应: {r.text[:200]}"
+                )
+            errcode = data.get("errcode", 0)
             self.handle_errcode(errcode)
             print(f"Could not get book info {r.text}")
 
@@ -259,13 +316,11 @@ class WeReadApi:
     def get_bookmark_list(self, bookId):
         """获取书籍的划线记录"""
         self.visit_homepage()
-        headers = self.get_standard_headers()
-        headers["Accept"] = "application/json, text/plain, */*"
-
+        headers = self.get_api_headers(bookId)
         params = dict(bookId=bookId)
         r = self.session.get(WEREAD_BOOKMARKLIST_URL, params=params, headers=headers)
         if r.ok:
-            data = r.json()
+            data = self.parse_json_response(r, "获取划线记录")
             bookmarks = data.get("updated", [])
             # 确保每个划线对象格式一致
             bookmarks = [
@@ -275,7 +330,13 @@ class WeReadApi:
             ]
             return bookmarks
         else:
-            errcode = r.json().get("errcode", 0)
+            try:
+                data = r.json()
+            except ValueError:
+                raise Exception(
+                    f"获取划线记录失败，状态码: {r.status_code}, 响应: {r.text[:200]}"
+                )
+            errcode = data.get("errcode", 0)
             self.handle_errcode(errcode)
             raise Exception(f"Could not get {bookId} bookmark list")
 
@@ -283,15 +344,19 @@ class WeReadApi:
     def get_read_info(self, bookId):
         """获取阅读进度"""
         self.visit_homepage()
-        headers = self.get_standard_headers()
-        headers["Accept"] = "application/json, text/plain, */*"
-
+        headers = self.get_api_headers(bookId)
         params = dict(bookId=bookId)
         r = self.session.get(WEREAD_READ_INFO_URL, headers=headers, params=params)
         if r.ok:
-            return r.json()
+            return self.parse_json_response(r, "获取阅读进度")
         else:
-            errcode = r.json().get("errcode", 0)
+            try:
+                data = r.json()
+            except ValueError:
+                raise Exception(
+                    f"获取阅读进度失败，状态码: {r.status_code}, 响应: {r.text[:200]}"
+                )
+            errcode = data.get("errcode", 0)
             self.handle_errcode(errcode)
             raise Exception(f"get {bookId} read info failed {r.text}")
 
@@ -299,15 +364,13 @@ class WeReadApi:
     def get_review_list(self, bookId):
         """获取笔记/想法列表"""
         self.visit_homepage()
-        headers = self.get_standard_headers()
-        headers["Accept"] = "application/json, text/plain, */*"
-
+        headers = self.get_api_headers(bookId)
         params = dict(
             bookId=bookId, listType=4, maxIdx=0, count=0, listMode=2, syncKey=0
         )
         r = self.session.get(WEREAD_REVIEW_LIST_URL, params=params, headers=headers)
         if r.ok:
-            data = r.json()
+            data = self.parse_json_response(r, "获取笔记列表")
             reviews = data.get("reviews", [])
             # 转换成正确的格式
             reviews = [x.get("review") for x in reviews if x.get("review")]
@@ -319,22 +382,32 @@ class WeReadApi:
             ]
             return reviews
         else:
-            errcode = r.json().get("errcode", 0)
+            try:
+                data = r.json()
+            except ValueError:
+                raise Exception(
+                    f"获取笔记列表失败，状态码: {r.status_code}, 响应: {r.text[:200]}"
+                )
+            errcode = data.get("errcode", 0)
             self.handle_errcode(errcode)
             raise Exception(f"get {bookId} review list failed {r.text}")
 
     def get_best_reviews(self, bookId, count=10, maxIdx=0, synckey=0):
         """获取热门书评"""
         self.visit_homepage()
-        headers = self.get_standard_headers()
-        headers["Accept"] = "application/json, text/plain, */*"
-
+        headers = self.get_api_headers(bookId)
         params = dict(bookId=bookId, synckey=synckey, maxIdx=maxIdx, count=count)
         r = self.session.get(WEREAD_BEST_REVIEW_URL, params=params, headers=headers)
         if r.ok:
-            return r.json()
+            return self.parse_json_response(r, "获取热门书评")
         else:
-            errcode = r.json().get("errcode", 0)
+            try:
+                data = r.json()
+            except ValueError:
+                raise Exception(
+                    f"获取热门书评失败，状态码: {r.status_code}, 响应: {r.text[:200]}"
+                )
+            errcode = data.get("errcode", 0)
             self.handle_errcode(errcode)
             raise Exception(f"get {bookId} best reviews failed {r.text}")
 
@@ -366,16 +439,8 @@ class WeReadApi:
             time.sleep(delay)
 
             # 4. 准备请求头 - 模拟浏览器行为
-            headers = {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36",
-                "Content-Type": "application/json;charset=UTF-8",
-                "Accept": "application/json, text/plain, */*",
-                "Origin": "https://weread.qq.com",
-                "Referer": f"https://weread.qq.com/web/reader/{bookId}",
-                "Sec-Fetch-Dest": "empty",
-                "Sec-Fetch-Mode": "cors",
-                "Sec-Fetch-Site": "same-origin",
-            }
+            headers = self.get_api_headers(bookId)
+            headers["Content-Type"] = "application/json;charset=UTF-8"
 
             # 5. 使用正确的请求体格式
             body = {"bookIds": [bookId]}

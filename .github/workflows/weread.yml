@@ -30,7 +30,6 @@ jobs:
       DAY_DATABASE_NAME: ${{ vars.DAY_DATABASE_NAME }}
       REF: ${{ github.ref }}
       REPOSITORY: ${{ github.repository }}
-      LOG_LEVEL: DEBUG
     steps:
       - name: Checkout
         uses: actions/checkout@v4

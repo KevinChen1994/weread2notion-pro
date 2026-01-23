@@ -117,8 +117,10 @@ class NotionHelper:
             self.create_database()
         if self.setting_database_id is None:
             self.create_setting_database()
-        if self.setting_database_id:
-            self.insert_to_setting_database()
+
+        # 暂时跳过设置数据库的初始化，避免同步数据库的 query 问题
+        # if self.setting_database_id:
+        #     self.insert_to_setting_database()
 
     def extract_page_id(self, notion_url):
         # 正则表达式匹配 32 个字符的 Notion page_id

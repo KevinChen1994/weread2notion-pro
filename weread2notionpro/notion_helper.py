@@ -158,7 +158,7 @@ class NotionHelper:
                 self.search_database(child["id"], depth + 1, max_depth)
 
     def resolve_synced_databases(self):
-        """解析同步数据库，将同步数据库的 ID 替换为源数据库的 ID"""
+        """解析同步数据库，将同步数据库的 ID 替换为源数据库的 ID（如果有权限）"""
         database_attrs = [
             'book_database_id', 'review_database_id', 'bookmark_database_id',
             'day_database_id', 'week_database_id', 'month_database_id', 'year_database_id',
@@ -175,7 +175,19 @@ class NotionHelper:
                     if response.get("data_sources") and len(response.get("data_sources", [])) > 0:
                         source_db_id = response["data_sources"][0]["id"]
                         logging.info(f"{attr} 是同步数据库，源数据库 ID: {source_db_id}")
-                        setattr(self, attr, source_db_id)
+
+                        # 尝试访问源数据库
+                        try:
+                            source_response = self.client.databases.retrieve(database_id=source_db_id)
+                            # 只有在能成功访问源数据库时才替换 ID
+                            if source_response.get("properties"):
+                                setattr(self, attr, source_db_id)
+                                logging.info(f"{attr} 已更新为源数据库 ID（有权限）")
+                            else:
+                                logging.warning(f"{attr} 源数据库无 properties，保持使用同步数据库")
+                        except Exception as e:
+                            logging.warning(f"{attr} 源数据库无访问权限，保持使用同步数据库: {str(e)}")
+                            # 保持使用原来的同步数据库 ID
                 except Exception as e:
                     logging.warning(f"检查数据库 {attr} 时出错: {str(e)}")
 
@@ -203,12 +215,18 @@ class NotionHelper:
 
         # 检查 properties 是否存在
         if properties is None:
-            error_msg = f"数据库响应中缺少 properties 字段！\n" \
-                       f"database_id: {id}\n" \
-                       f"response keys: {list(response.keys())}"
-            logging.error(error_msg)
-            logging.error(f"完整响应: {response}")
-            raise Exception(error_msg)
+            # 检查是否是同步数据库（没有 properties 但可以继续使用）
+            if response.get("data_sources"):
+                logging.warning(f"书架数据库是同步数据库且源数据库无权限，跳过属性更新")
+                logging.warning(f"提示：如需更新数据库属性，请将 integration 添加到源数据库所在页面")
+                return  # 跳过属性更新，但不抛出异常
+            else:
+                error_msg = f"数据库响应中缺少 properties 字段！\n" \
+                           f"database_id: {id}\n" \
+                           f"response keys: {list(response.keys())}"
+                logging.error(error_msg)
+                logging.error(f"完整响应: {response}")
+                raise Exception(error_msg)
 
         update_properties = {}
         if (

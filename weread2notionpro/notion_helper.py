@@ -333,7 +333,13 @@ class NotionHelper:
         ).get("id")
 
     def insert_to_setting_database(self):
-        existing_pages = self.query(database_id=self.setting_database_id, filter={"property": "标题", "title": {"equals": "设置"}}).get("results")
+        # 直接调用 client.databases.query 而不是通过 wrapper
+        filter_params = {"property": "标题", "title": {"equals": "设置"}}
+        response = self.client.databases.query(
+            database_id=self.setting_database_id,
+            filter=filter_params
+        )
+        existing_pages = response.get("results")
         properties = {
             "标题": {"title": [{"type": "text", "text": {"content": "设置"}}]},
             "最后同步时间": {"date": {"start": pendulum.now("Asia/Shanghai").isoformat()}},

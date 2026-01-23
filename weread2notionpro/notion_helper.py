@@ -109,6 +109,9 @@ class NotionHelper:
         # 添加日志：检查关键数据库是否找到
         logging.info(f"书架数据库 '{self.database_name_dict.get('BOOK_DATABASE_NAME')}' ID: {self.book_database_id}")
 
+        # 解析所有数据库的同步关系（如果是同步数据库，获取源数据库 ID）
+        self.resolve_synced_databases()
+
         self.update_book_database()
         if self.read_database_id is None:
             self.create_database()
@@ -154,6 +157,28 @@ class NotionHelper:
             if "has_children" in child and child["has_children"]:
                 self.search_database(child["id"], depth + 1, max_depth)
 
+    def resolve_synced_databases(self):
+        """解析同步数据库，将同步数据库的 ID 替换为源数据库的 ID"""
+        database_attrs = [
+            'book_database_id', 'review_database_id', 'bookmark_database_id',
+            'day_database_id', 'week_database_id', 'month_database_id', 'year_database_id',
+            'category_database_id', 'author_database_id', 'chapter_database_id',
+            'read_database_id', 'setting_database_id'
+        ]
+
+        for attr in database_attrs:
+            db_id = getattr(self, attr, None)
+            if db_id:
+                try:
+                    response = self.client.databases.retrieve(database_id=db_id)
+                    # 检查是否是同步数据库
+                    if response.get("data_sources") and len(response.get("data_sources", [])) > 0:
+                        source_db_id = response["data_sources"][0]["id"]
+                        logging.info(f"{attr} 是同步数据库，源数据库 ID: {source_db_id}")
+                        setattr(self, attr, source_db_id)
+                except Exception as e:
+                    logging.warning(f"检查数据库 {attr} 时出错: {str(e)}")
+
     def update_book_database(self):
         """更新数据库"""
         # 检查 book_database_id 是否有效
@@ -179,7 +204,7 @@ class NotionHelper:
         # 检查 properties 是否存在
         if properties is None:
             error_msg = f"数据库响应中缺少 properties 字段！\n" \
-                       f"database_id: {self.book_database_id}\n" \
+                       f"database_id: {id}\n" \
                        f"response keys: {list(response.keys())}"
             logging.error(error_msg)
             logging.error(f"完整响应: {response}")

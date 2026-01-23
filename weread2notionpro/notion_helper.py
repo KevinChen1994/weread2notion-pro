@@ -55,10 +55,20 @@ class NotionHelper:
         self.client = Client(auth=os.getenv("NOTION_TOKEN"), log_level=logging.ERROR)
         self.__cache = {}
         self.page_id = self.extract_page_id(os.getenv("NOTION_PAGE"))
+
+        # 添加日志：开始搜索数据库
+        logging.info(f"开始搜索数据库，页面ID: {self.page_id}")
         self.search_database(self.page_id)
+        logging.info(f"找到 {len(self.database_id_dict)} 个数据库: {list(self.database_id_dict.keys())}")
+
+        # 检查环境变量覆盖
         for key in self.database_name_dict.keys():
-            if os.getenv(key) != None and os.getenv(key) != "":
-                self.database_name_dict[key] = os.getenv(key)
+            env_value = os.getenv(key)
+            if env_value:  # 简化检查，None 和空字符串都视为未设置
+                old_name = self.database_name_dict[key]
+                self.database_name_dict[key] = env_value
+                logging.info(f"环境变量覆盖: {key} = '{env_value}' (原值: '{old_name}')")
+
         self.book_database_id = self.database_id_dict.get(
             self.database_name_dict.get("BOOK_DATABASE_NAME")
         )
@@ -91,10 +101,14 @@ class NotionHelper:
         )
         self.read_database_id = self.database_id_dict.get(
             self.database_name_dict.get("READ_DATABASE_NAME")
-        )  
+        )
         self.setting_database_id = self.database_id_dict.get(
             self.database_name_dict.get("SETTING_DATABASE_NAME")
         )
+
+        # 添加日志：检查关键数据库是否找到
+        logging.info(f"书架数据库 '{self.database_name_dict.get('BOOK_DATABASE_NAME')}' ID: {self.book_database_id}")
+
         self.update_book_database()
         if self.read_database_id is None:
             self.create_database()
@@ -114,8 +128,18 @@ class NotionHelper:
         else:
             raise Exception(f"获取NotionID失败，请检查输入的Url是否正确")
 
-    def search_database(self, block_id):
-        children = self.client.blocks.children.list(block_id=block_id)["results"]
+    def search_database(self, block_id, depth=0, max_depth=10):
+        """递归搜索数据库，添加深度限制防止无限递归"""
+        if depth > max_depth:
+            logging.warning(f"达到最大递归深度 {max_depth}，停止搜索")
+            return
+
+        try:
+            children = self.client.blocks.children.list(block_id=block_id)["results"]
+        except Exception as e:
+            logging.error(f"获取 block children 失败 (depth={depth}): {str(e)}")
+            return
+
         # 遍历子块
         for child in children:
             # 检查子块的类型
@@ -128,13 +152,39 @@ class NotionHelper:
                     self.heatmap_block_id = child.get("id")
             # 如果子块有子块，递归调用函数
             if "has_children" in child and child["has_children"]:
-                self.search_database(child["id"])
+                self.search_database(child["id"], depth + 1, max_depth)
 
     def update_book_database(self):
         """更新数据库"""
-        response = self.client.databases.retrieve(database_id=self.book_database_id)
+        # 检查 book_database_id 是否有效
+        if self.book_database_id is None:
+            error_msg = f"书架数据库未找到！请检查：\n" \
+                       f"1. Notion 页面中是否存在名为 '{self.database_name_dict.get('BOOK_DATABASE_NAME')}' 的数据库\n" \
+                       f"2. NOTION_TOKEN 对应的 integration 是否有访问权限\n" \
+                       f"3. 环境变量 BOOK_DATABASE_NAME 是否正确设置"
+            logging.error(error_msg)
+            raise Exception(error_msg)
+
+        try:
+            response = self.client.databases.retrieve(database_id=self.book_database_id)
+        except Exception as e:
+            error_msg = f"获取书架数据库失败：{str(e)}\n" \
+                       f"database_id: {self.book_database_id}"
+            logging.error(error_msg)
+            raise Exception(error_msg) from e
+
         id = response.get("id")
         properties = response.get("properties")
+
+        # 检查 properties 是否存在
+        if properties is None:
+            error_msg = f"数据库响应中缺少 properties 字段！\n" \
+                       f"database_id: {self.book_database_id}\n" \
+                       f"response keys: {list(response.keys())}"
+            logging.error(error_msg)
+            logging.error(f"完整响应: {response}")
+            raise Exception(error_msg)
+
         update_properties = {}
         if (
             properties.get("阅读时长") is None

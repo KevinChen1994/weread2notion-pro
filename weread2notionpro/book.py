@@ -1,9 +1,19 @@
+import logging
+import os
 import pendulum
 
 from weread2notionpro import utils
 from weread2notionpro.config import book_properties_type_dict, tz
 from weread2notionpro.notion_helper import NotionHelper
 from weread2notionpro.weread_api import WeReadApi
+
+# 配置日志
+log_level = os.getenv("LOG_LEVEL", "INFO")
+logging.basicConfig(
+    level=getattr(logging, log_level),
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 TAG_ICON_URL = "https://www.notion.so/icons/tag_gray.svg"
 USER_ICON_URL = "https://www.notion.so/icons/user-circle-filled_gray.svg"

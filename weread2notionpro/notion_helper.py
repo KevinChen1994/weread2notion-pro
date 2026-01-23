@@ -519,9 +519,14 @@ class NotionHelper:
         )
 
     @retry(stop_max_attempt_number=3, wait_fixed=5000)
-    def query(self, **kwargs):
-        kwargs = {k: v for k, v in kwargs.items() if v}
-        return self.client.databases.query(**kwargs)
+    def query(self, database_id=None, **kwargs):
+        # 过滤掉 None 值的参数
+        kwargs = {k: v for k, v in kwargs.items() if v is not None}
+        # database_id 必须作为第一个位置参数传递
+        if database_id:
+            return self.client.databases.query(database_id=database_id, **kwargs)
+        else:
+            return self.client.databases.query(**kwargs)
 
     @retry(stop_max_attempt_number=3, wait_fixed=5000)
     def get_block_children(self, id):

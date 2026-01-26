@@ -100,24 +100,36 @@ def main():
             print(f"更新热力图失败，没有添加热力图占位。具体参考：{HEATMAP_GUIDE}")
     else:
         print(f"更新热力图失败，没有生成热力图。具体参考：{HEATMAP_GUIDE}")
-    api_data = weread_api.get_api_data()
-    readTimes = {int(key): value for key, value in api_data.get("readTimes").items()}
-    now = pendulum.now("Asia/Shanghai").start_of("day")
-    today_timestamp = now.int_timestamp
-    if today_timestamp not in readTimes:
-        readTimes[today_timestamp] = 0
-    readTimes = dict(sorted(readTimes.items()))
-    results = notion_helper.query_all(database_id=notion_helper.day_database_id)
-    for result in results:
-        timestamp = result.get("properties").get("时间戳").get("number")
-        duration = result.get("properties").get("时长").get("number")
-        id = result.get("id")
-        if timestamp in readTimes:
-            value = readTimes.pop(timestamp)
-            if value != duration:
-                insert_to_notion(page_id=id, timestamp=timestamp, duration=value)
-    for key, value in readTimes.items():
-        insert_to_notion(None, int(key), value)
+
+    # 尝试获取阅读历史数据
+    try:
+        api_data = weread_api.get_api_data()
+        readTimes = {int(key): value for key, value in api_data.get("readTimes").items()}
+        now = pendulum.now("Asia/Shanghai").start_of("day")
+        today_timestamp = now.int_timestamp
+        if today_timestamp not in readTimes:
+            readTimes[today_timestamp] = 0
+        readTimes = dict(sorted(readTimes.items()))
+        results = notion_helper.query_all(database_id=notion_helper.day_database_id)
+        for result in results:
+            timestamp = result.get("properties").get("时间戳").get("number")
+            duration = result.get("properties").get("时长").get("number")
+            id = result.get("id")
+            if timestamp in readTimes:
+                value = readTimes.pop(timestamp)
+                if value != duration:
+                    insert_to_notion(page_id=id, timestamp=timestamp, duration=value)
+        for key, value in readTimes.items():
+            insert_to_notion(None, int(key), value)
+        print("✅ 阅读时间数据同步成功")
+    except Exception as e:
+        print(f"⚠️ 阅读时间同步失败: {e}")
+        print("💡 说明：i.weread.qq.com API 目前需要特殊的 token 认证")
+        print("💡 这不影响笔记和书籍同步功能，它们使用不同的 API")
+        print("💡 如果需要阅读时间统计，请考虑：")
+        print("   1. 在微信读书 App 或网页端查看")
+        print("   2. 或配置 github-heatmap 所需的 REFRESH_TOKEN 等参数")
+        # 不抛出异常，让程序正常退出
 
 
 if __name__ == "__main__":

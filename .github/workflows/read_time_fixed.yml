@@ -1,0 +1,97 @@
+name: read time sync (fixed)
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 */3 * * *"
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  sync:
+    name: Sync
+    runs-on: ubuntu-latest
+    env:
+      NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+      NOTION_PAGE: ${{ secrets.NOTION_PAGE }}
+      WEREAD_COOKIE: ${{ secrets.WEREAD_COOKIE }}
+      CC_URL: ${{ secrets.CC_URL }}
+      CC_ID: ${{ secrets.CC_ID }}
+      CC_PASSWORD: ${{ secrets.CC_PASSWORD }}
+      HEATMAP_BLOCK_ID: ${{ secrets.HEATMAP_BLOCK_ID }}
+      BOOK_DATABASE_NAME: ${{ vars.BOOK_DATABASE_NAME }}
+      AUTHOR_DATABASE_NAME: ${{ vars.AUTHOR_DATABASE_NAME }}
+      CATEGORY_DATABASE_NAME: ${{ vars.CATEGORY_DATABASE_NAME }}
+      BOOKMARK_DATABASE_NAME: ${{ vars.BOOKMARK_DATABASE_NAME }}
+      REVIEW_DATABASE_NAME: ${{ vars.REVIEW_DATABASE_NAME }}
+      CHAPTER_DATABASE_NAME: ${{ vars.CHAPTER_DATABASE_NAME }}
+      YEAR_DATABASE_NAME: ${{ vars.YEAR_DATABASE_NAME }}
+      WEEK_DATABASE_NAME: ${{ vars.WEEK_DATABASE_NAME }}
+      MONTH_DATABASE_NAME: ${{ vars.MONTH_DATABASE_NAME }}
+      DAY_DATABASE_NAME: ${{ vars.DAY_DATABASE_NAME }}
+      REF: ${{ github.ref }}
+      REPOSITORY: ${{ github.repository }}
+      YEAR: ${{ vars.YEAR }}
+      # github-heatmap 需要的认证参数
+      REFRESH_TOKEN: ${{ secrets.REFRESH_TOKEN }}
+      ACTIVATION_CODE: ${{ secrets.ACTIVATION_CODE }}
+      DEVICE_ID: ${{ secrets.DEVICE_ID }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.11
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Remove folder
+        run: rm -rf ./OUT_FOLDER
+      - name: Set default year if not provided
+        run: echo "YEAR=$(date +"%Y")" >> $GITHUB_ENV
+        if: env.YEAR == ''
+
+      # 修改：添加 continue-on-error，即使失败也继续执行
+      - name: weread heatmap
+        continue-on-error: true
+        run: |
+          echo "⚠️ 注意：如果缺少 REFRESH_TOKEN/ACTIVATION_CODE/DEVICE_ID，此步骤会失败但不影响后续同步"
+          github_heatmap weread  --year $YEAR  --me "${{secrets.NAME}}" --without-type-name --background-color=${{ vars.background_color||'#FFFFFF'}} --track-color=${{ vars.track_color||'#ACE7AE'}} --special-color1=${{ vars.special_color||'#69C16E'}} --special-color2=${{ vars.special_color2||'#549F57'}} --dom-color=${{ vars.dom_color||'#EBEDF0'}} --text-color=${{ vars.text_color||'#000000'}}
+
+      # 修改：只在热力图成功生成时执行
+      - name: Rename weread.svg to a random name
+        continue-on-error: true
+        if: hashFiles('OUT_FOLDER/weread.svg') != ''
+        run: |
+          cd OUT_FOLDER
+          find . -type f ! -name "weread.svg" -exec rm -f {} +
+          cd ..
+          RANDOM_FILENAME=$(uuidgen).svg
+          mv ./OUT_FOLDER/weread.svg ./OUT_FOLDER/$RANDOM_FILENAME
+          echo "Renamed file to $RANDOM_FILENAME"
+
+      # 修改：只在有文件变更时提交
+      - name: push
+        continue-on-error: true
+        if: hashFiles('OUT_FOLDER/*') != ''
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add .
+          git commit -m 'add new heatmap' || echo "nothing to commit"
+          git push || echo "nothing to push"
+
+      # 核心步骤：阅读时间同步（使用 WEREAD_COOKIE，不受热力图影响）
+      - name: read time sync
+        run: |
+          echo "🚀 开始同步阅读时间数据到 Notion..."
+          python -m weread2notionpro.read_time
+          if [ $? -eq 0 ]; then
+            echo "✅ 阅读时间同步完成"
+          else
+            echo "❌ 阅读时间同步失败"
+            exit 1
+          fi
+

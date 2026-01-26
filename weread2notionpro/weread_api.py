@@ -134,16 +134,25 @@ class WeReadApi:
             try:
                 cookie = self.try_get_cloud_cookie(url, id, password)
                 if cookie:
-                    print("成功从Cookie Cloud获取微信读书Cookie")
+                    print("✅ 成功从Cookie Cloud获取微信读书Cookie")
+                    # 检查关键Cookie字段
+                    critical_cookies = ["wr_vid", "wr_skey"]
+                    cookie_lower = cookie.lower()
+                    for key in critical_cookies:
+                        if key not in cookie_lower:
+                            print(f"⚠️ 警告：Cookie中缺少关键字段 {key}")
+                    print(f"📋 Cookie长度: {len(cookie)} 字符")
                     return cookie
             except Exception as error:
-                print(f"使用Cookie Cloud获取Cookie失败: {error}")
+                print(f"❌ 使用Cookie Cloud获取Cookie失败: {error}")
 
         # 2. 回退到环境变量中的直接Cookie
         env_cookie = os.getenv("WEREAD_COOKIE")
         if not env_cookie or not env_cookie.strip():
             raise Exception("没有找到cookie，请按照文档填写cookie或配置Cookie Cloud")
 
+        print("📋 使用环境变量 WEREAD_COOKIE")
+        print(f"📋 Cookie长度: {len(env_cookie)} 字符")
         return env_cookie
 
     def parse_cookie_string(self):
@@ -416,14 +425,42 @@ class WeReadApi:
     @retry(stop_max_attempt_number=3, wait_fixed=5000)
     def get_api_data(self):
         """获取阅读历史数据"""
+        print(f"🔍 开始获取阅读历史数据，API: {WEREAD_HISTORY_URL}")
+
         # 1. 访问主页初始化会话
         self.visit_homepage()
 
-        # 2. 准备请求头 - 使用标准 API 请求头
-        headers = self.get_api_headers(referer=WEREAD_URL)
+        # 2. 准备请求头 - 针对 i.weread.qq.com 的跨子域请求
+        # 注意：i.weread.qq.com 和 weread.qq.com 是不同子域名，需要 same-site
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36",
+            "Connection": "keep-alive",
+            "Accept": "application/json, text/plain, */*",
+            "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+            "cache-control": "no-cache",
+            "pragma": "no-cache",
+            "Origin": "https://weread.qq.com",
+            "Referer": "https://weread.qq.com/",
+            "sec-ch-ua": '"Google Chrome";v="135", "Not-A.Brand";v="8", "Chromium";v="135"',
+            "sec-ch-ua-mobile": "?0",
+            "sec-ch-ua-platform": '"Windows"',
+            "Sec-Fetch-Mode": "cors",
+            "Sec-Fetch-Dest": "empty",
+            "Sec-Fetch-Site": "same-site",  # 关键：跨子域名使用 same-site
+            "X-Requested-With": "XMLHttpRequest",
+        }
 
-        # 3. 获取阅读历史数据
-        r = self.session.get(WEREAD_HISTORY_URL, headers=headers)
+        # 3. 检查 Cookie 是否存在
+        if not self.session.cookies:
+            print("⚠️ 警告：会话中没有 Cookie")
+        else:
+            print(f"📋 会话 Cookie 数量: {len(self.session.cookies)}")
+
+        # 4. 获取阅读历史数据
+        r = self.session.get(WEREAD_HISTORY_URL, headers=headers, timeout=30)
+
+        print(f"📡 响应状态码: {r.status_code}")
+
         if r.ok:
             return self.parse_json_response(r, "获取阅读历史数据")
         else:
@@ -434,6 +471,8 @@ class WeReadApi:
                     f"获取阅读历史数据失败，状态码: {r.status_code}, 响应: {r.text[:200]}"
                 )
             errcode = data.get("errcode", 0)
+            errmsg = data.get("errmsg", "未知错误")
+            print(f"❌ API返回错误 - errcode: {errcode}, errmsg: {errmsg}")
             self.handle_errcode(errcode)
             raise Exception(f"get history data failed {r.text}")
 

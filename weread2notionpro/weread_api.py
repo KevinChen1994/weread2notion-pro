@@ -413,13 +413,27 @@ class WeReadApi:
             self.handle_errcode(errcode)
             raise Exception(f"get {bookId} best reviews failed {r.text}")
 
+    @retry(stop_max_attempt_number=3, wait_fixed=5000)
     def get_api_data(self):
-        self.session.get(WEREAD_URL)
-        r = self.session.get(WEREAD_HISTORY_URL)
+        """获取阅读历史数据"""
+        # 1. 访问主页初始化会话
+        self.visit_homepage()
+
+        # 2. 准备请求头 - 使用标准 API 请求头
+        headers = self.get_api_headers(referer=WEREAD_URL)
+
+        # 3. 获取阅读历史数据
+        r = self.session.get(WEREAD_HISTORY_URL, headers=headers)
         if r.ok:
-            return r.json()
+            return self.parse_json_response(r, "获取阅读历史数据")
         else:
-            errcode = r.json().get("errcode", 0)
+            try:
+                data = r.json()
+            except ValueError:
+                raise Exception(
+                    f"获取阅读历史数据失败，状态码: {r.status_code}, 响应: {r.text[:200]}"
+                )
+            errcode = data.get("errcode", 0)
             self.handle_errcode(errcode)
             raise Exception(f"get history data failed {r.text}")
 

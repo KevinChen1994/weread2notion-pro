@@ -170,7 +170,9 @@ class WeReadApi:
         return env_cookie
 
     def parse_cookie_string(self):
-        cookies_dict = {}
+        """解析 Cookie 字符串并创建支持跨子域名的 CookieJar"""
+        from http.cookiejar import Cookie
+        import time
 
         # 使用正则表达式解析 cookie 字符串
         pattern = re.compile(r"([^=]+)=([^;]+);?\s*")
@@ -178,13 +180,16 @@ class WeReadApi:
 
         print(f"🔍 解析Cookie，找到 {len(matches)} 个字段")
 
+        # 创建一个新的 CookieJar
+        cookiejar = requests.cookies.RequestsCookieJar()
+
         for key, value in matches:
             # 去除首尾空格
             key = key.strip()
             value = value.strip()
 
             # 检查关键Cookie字段
-            if key in ["wr_vid", "wr_skey", "wr_name", "wr_avatar"]:
+            if key in ["wr_vid", "wr_skey", "wr_name", "wr_avatar", "pac_uid", "pgv_pvid"]:
                 # 显示关键字段的前几个字符
                 display_value = value[:10] + "..." if len(value) > 10 else value
                 print(f"  📌 {key} = {display_value}")
@@ -193,15 +198,35 @@ class WeReadApi:
             # 暂时保留原有逻辑，但添加调试信息
             try:
                 encoded_value = value.encode("unicode_escape").decode("ascii")
-                cookies_dict[key] = encoded_value
+                final_value = encoded_value
             except Exception as e:
                 print(f"⚠️ 警告：Cookie字段 {key} 编码失败: {e}")
                 # 如果编码失败，使用原始值
-                cookies_dict[key] = value
+                final_value = value
 
-        # 直接使用 cookies_dict 创建 cookiejar
-        cookiejar = cookiejar_from_dict(cookies_dict)
+            # 关键修复：手动创建 Cookie 对象，设置 domain 为 .weread.qq.com
+            # 这样可以让 Cookie 在 weread.qq.com 和 i.weread.qq.com 都生效
+            cookie = Cookie(
+                version=0,
+                name=key,
+                value=final_value,
+                port=None,
+                port_specified=False,
+                domain=".weread.qq.com",  # 关键：使用 .weread.qq.com 包含所有子域名
+                domain_specified=True,
+                domain_initial_dot=True,
+                path="/",
+                path_specified=True,
+                secure=True,
+                expires=int(time.time()) + 86400 * 30,  # 30天后过期
+                discard=False,
+                comment=None,
+                comment_url=None,
+                rest={},
+            )
+            cookiejar.set_cookie(cookie)
 
+        print(f"✅ Cookie 已设置为跨子域名模式（.weread.qq.com）")
         return cookiejar
 
     def get_standard_headers(self):

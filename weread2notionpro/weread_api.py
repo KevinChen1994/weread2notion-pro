@@ -110,9 +110,23 @@ class WeReadApi:
             return None
 
         cookie_items = []
+        critical_cookies_found = {"wr_vid": False, "wr_skey": False}
+
         for cookie in cookies:
             if cookie.get("name") and cookie.get("value"):
-                cookie_items.append(f"{cookie['name']}={cookie['value']}")
+                name = cookie["name"]
+                value = cookie["value"]
+                cookie_items.append(f"{name}={value}")
+
+                # 检查关键Cookie
+                if name in critical_cookies_found:
+                    critical_cookies_found[name] = True
+                    print(f"  ✓ 找到关键Cookie: {name}")
+
+        # 检查是否所有关键Cookie都存在
+        for key, found in critical_cookies_found.items():
+            if not found:
+                print(f"  ⚠️ 警告：CookieCloud中缺少关键Cookie: {key}")
 
         if not cookie_items:
             return None
@@ -162,8 +176,29 @@ class WeReadApi:
         pattern = re.compile(r"([^=]+)=([^;]+);?\s*")
         matches = pattern.findall(self.cookie)
 
+        print(f"🔍 解析Cookie，找到 {len(matches)} 个字段")
+
         for key, value in matches:
-            cookies_dict[key] = value.encode("unicode_escape").decode("ascii")
+            # 去除首尾空格
+            key = key.strip()
+            value = value.strip()
+
+            # 检查关键Cookie字段
+            if key in ["wr_vid", "wr_skey", "wr_name", "wr_avatar"]:
+                # 显示关键字段的前几个字符
+                display_value = value[:10] + "..." if len(value) > 10 else value
+                print(f"  📌 {key} = {display_value}")
+
+            # 注意：这里的 unicode_escape 编码可能会破坏某些Cookie值
+            # 暂时保留原有逻辑，但添加调试信息
+            try:
+                encoded_value = value.encode("unicode_escape").decode("ascii")
+                cookies_dict[key] = encoded_value
+            except Exception as e:
+                print(f"⚠️ 警告：Cookie字段 {key} 编码失败: {e}")
+                # 如果编码失败，使用原始值
+                cookies_dict[key] = value
+
         # 直接使用 cookies_dict 创建 cookiejar
         cookiejar = cookiejar_from_dict(cookies_dict)
 
